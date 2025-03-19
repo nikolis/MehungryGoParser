@@ -75,7 +75,15 @@ README.md
 
 Project documentation.
 Best Practices:
+
 Use cmd/ for binaries instead of placing all logic in main.go.
+
 Use internal/ for code that shouldn’t be accessed outside your project.
+
 Keep business logic separate from HTTP handlers (use service/).
+
 Follow idiomatic Go naming conventions.
+
+
+# Command Line Tool for splitting files to manage large json files  created using Cobra 
+
