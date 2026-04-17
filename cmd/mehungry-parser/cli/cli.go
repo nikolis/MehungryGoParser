@@ -38,16 +38,28 @@ func init() {
 	viper.SetDefault("license", "apache")
   
   var source string
+  var output string
+	var key    string
+
   var commandSplitCSV = &cobra.Command{
 		Use:   "split",
 		Short: "A generator for Cobra based Applications",
 		Long: "Some long basic description",
     Run: func(cmd *cobra.Command, args []string) {
-      json_parser.ParseTheFile(source)
+     	if source == "" {
+    		fmt.Println("Error: --source flag is required")
+		  return
+	  }
+	    fmt.Println("input:", source)
+	    fmt.Println("output:", output)
+      fmt.Println("json object key", key)
+      json_parser.ParseTheFile(source, output, key)
       fmt.Println(source)
     },
 	}
   commandSplitCSV.Flags().StringVarP(&source, "source", "s", "", "Path to json file to split")
+  commandSplitCSV.Flags().StringVarP(&output, "output", "o", "./output", "Output directory")
+  commandSplitCSV.Flags().StringVarP(&key, "key", "k", "BrandedFoods", "JSON root key to extract")
 	rootCmd.AddCommand(commandSplitCSV)
 	//rootCmd.AddCommand(initCmd)
 }

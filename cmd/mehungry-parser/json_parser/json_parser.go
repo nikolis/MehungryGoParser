@@ -10,8 +10,7 @@ import (
 type FdcFoodParserSplitter struct{}
 
 func getJSON(filename string) (map[string]interface{}, error) {
-	os.Mkdir("fdc_legacy_splited_files", 0755)
-	os.Chdir("fdc_legacy_splited_files")
+	//os.Mkdir("fdc_legacy_splited_files", 0755)
 
 	body, err := os.ReadFile(filename)
 	if err != nil {
@@ -27,16 +26,17 @@ func getJSON(filename string) (map[string]interface{}, error) {
 	return jsonData, nil
 }
 
-func (f *FdcFoodParserSplitter) GetIngredientsFromFoodDataCentralJSONFile(filePath string) error {
+func (f *FdcFoodParserSplitter) GetIngredientsFromFoodDataCentralJSONFile(filePath string, 	outputDir string, key string,) error {
 	jsonBody, err := getJSON(filePath)
 	if err != nil {
 		return err
 	}
+
 	// FoundationFoods // SRLegacyFoods //
-	ingredients, ok := jsonBody["SRLegacyFoods"].([]interface{})
-	if !ok {
-		return fmt.Errorf("failed to parse SRLegacyFoods")
-	}
+  ingredients, err := extractArray(jsonBody, key)
+if err != nil {
+	return err
+}
 
 	// Split ingredients into chunks of 10
 	var chunks [][]interface{}
@@ -50,7 +50,7 @@ func (f *FdcFoodParserSplitter) GetIngredientsFromFoodDataCentralJSONFile(filePa
 
 	// Write each chunk to a file
 	for i, chunk := range chunks {
-		err := writeSliceToFile(chunk, i)
+		err := writeSliceToFile(chunk, i, outputDir)
 		if err != nil {
 			return err
 		}
@@ -59,21 +59,35 @@ func (f *FdcFoodParserSplitter) GetIngredientsFromFoodDataCentralJSONFile(filePa
 	return nil
 }
 
-func writeSliceToFile(slice []interface{}, index int) error {
-	fileName := fmt.Sprintf("ing_slice%d.json", index)
+func writeSliceToFile(slice []interface{}, index int, outputDir string) error {
+	os.MkdirAll(outputDir, 0755)
+
+	fileName := fmt.Sprintf("%s/ing_slice%d.json", outputDir, index)
 
 	data, err := json.Marshal(slice)
 	if err != nil {
 		return err
 	}
 
-	err = os.WriteFile(fileName, data, 0644)
-	if err != nil {
-		return err
+	return os.WriteFile(fileName, data, 0644)
+}
+
+func extractArray(jsonBody map[string]interface{}, key string) ([]interface{}, error) {
+	raw, ok := jsonBody[key]
+	if !ok {
+		return nil, fmt.Errorf("key %s not found", key)
 	}
 
-	return nil
+	arr, ok := raw.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("key %s is not an array", key)
+	}
+
+	return arr, nil
 }
+
+
+
 
 func getJSONOr(filename string) ([]interface{}, error) {
 	absPath, _ := filepath.Abs(filename)
@@ -125,10 +139,46 @@ func CreateIngredient(ingredient interface{}) error {
 	return nil
 }
 
-func ParseTheFile(path string) {
+func ParseTheFile(path string, outputDir string, key string) {
+	fmt.Println("DEBUG path:", path) // 👈 add this
+
 	parser := &FdcFoodParserSplitter{}
-	err := parser.GetIngredientsFromFoodDataCentralJSONFile(path)
+  err := parser.GetIngredientsFromFoodDataCentralJSONFile(path, outputDir, key)
 	if err != nil {
 		fmt.Println("Error:", err)
 	}
 }
+type Record struct {
+    ID   int    `json:"id"`
+    Name string `json:"name"`
+}
+
+
+func StreamParse(filename string) error {
+    file, err := os.Open(filename)
+    if err != nil {
+        return err
+    }
+    defer file.Close()
+
+    decoder := json.NewDecoder(file)
+
+    // Read the opening '['
+    token, err := decoder.Token()
+    if err != nil || token != json.Delim('[') {
+        return fmt.Errorf("expected opening [ but got %v", token)
+    }
+
+    for decoder.More() {
+        var record Record
+        if err := decoder.Decode(&record); err != nil {
+            return err
+        }
+
+        // Process the record
+        fmt.Println("Got record:", record)
+    }
+
+    return nil
+ }
+
