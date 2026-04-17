@@ -87,3 +87,7 @@ Follow idiomatic Go naming conventions.
 
 # Command Line Tool for splitting files to manage large json files  created using Cobra 
 
+go run ./cmd/mehungry-parser/main.go split \
+  --source file.json \
+  --output ./out \
+  --key BrandedFoods
