@@ -9,49 +9,103 @@ import (
 
 type FdcFoodParserSplitter struct{}
 
-func getJSON(filename string) (map[string]interface{}, error) {
-	//os.Mkdir("fdc_legacy_splited_files", 0755)
-
-	body, err := os.ReadFile(filename)
+func streamArrayFromKey(filePath string, key string, process func(item interface{}) error) error {
+	file, err := os.Open(filePath)
 	if err != nil {
-		return nil, err
+		return err
+	}
+	defer file.Close()
+
+	decoder := json.NewDecoder(file)
+
+	// Read opening object "{"
+	t, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	if t != json.Delim('{') {
+		return fmt.Errorf("expected object start")
 	}
 
-	var jsonData map[string]interface{}
-	err = json.Unmarshal(body, &jsonData)
-	if err != nil {
-		return nil, err
+	// Find target key
+	for decoder.More() {
+		t, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+
+		k, ok := t.(string)
+		if !ok {
+			continue
+		}
+
+		// Found our key
+		if k == key {
+
+			// Expect array start
+			t, err := decoder.Token()
+			if err != nil {
+				return err
+			}
+
+			if t != json.Delim('[') {
+				return fmt.Errorf("expected array for key %s", key)
+			}
+
+			// Stream array items
+			for decoder.More() {
+				var item interface{}
+				if err := decoder.Decode(&item); err != nil {
+					return err
+				}
+
+				if err := process(item); err != nil {
+					return err
+				}
+			}
+
+			return nil
+		}
 	}
 
-	return jsonData, nil
+	return fmt.Errorf("key %s not found", key)
 }
 
-func (f *FdcFoodParserSplitter) GetIngredientsFromFoodDataCentralJSONFile(filePath string, 	outputDir string, key string,) error {
-	jsonBody, err := getJSON(filePath)
+func (f *FdcFoodParserSplitter) GetIngredientsFromFoodDataCentralJSONFile(
+	filePath string,
+	outputDir string,
+	key string,
+) error {
+
+	os.MkdirAll(outputDir, 0755)
+
+	var (
+		chunk []interface{}
+		index int
+	)
+
+	err := streamArrayFromKey(filePath, key, func(item interface{}) error {
+		chunk = append(chunk, item)
+
+		if len(chunk) >= 10 {
+			if err := writeSliceToFile(chunk, index, outputDir); err != nil {
+				return err
+			}
+
+			chunk = chunk[:0]
+			index++
+		}
+
+		return nil
+	})
+
 	if err != nil {
 		return err
 	}
 
-	// FoundationFoods // SRLegacyFoods //
-  ingredients, err := extractArray(jsonBody, key)
-if err != nil {
-	return err
-}
-
-	// Split ingredients into chunks of 10
-	var chunks [][]interface{}
-	for i := 0; i < len(ingredients); i += 10 {
-		end := i + 10
-		if end > len(ingredients) {
-			end = len(ingredients)
-		}
-		chunks = append(chunks, ingredients[i:end])
-	}
-
-	// Write each chunk to a file
-	for i, chunk := range chunks {
-		err := writeSliceToFile(chunk, i, outputDir)
-		if err != nil {
+	// write remaining items
+	if len(chunk) > 0 {
+		if err := writeSliceToFile(chunk, index, outputDir); err != nil {
 			return err
 		}
 	}
@@ -60,8 +114,6 @@ if err != nil {
 }
 
 func writeSliceToFile(slice []interface{}, index int, outputDir string) error {
-	os.MkdirAll(outputDir, 0755)
-
 	fileName := fmt.Sprintf("%s/ing_slice%d.json", outputDir, index)
 
 	data, err := json.Marshal(slice)
